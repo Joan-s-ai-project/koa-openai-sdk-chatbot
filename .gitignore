@@ -29,3 +29,6 @@ dist-ssr
 
 # Claude Code
 .claude
+
+# Chat history data
+data/
