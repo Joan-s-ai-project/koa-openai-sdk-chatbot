@@ -13,11 +13,7 @@ import type { ChatRequestBody } from '../types/chat'
 export async function chat(ctx: Koa.Context) {
   const { sessionId, message, model, temperature } = ctx.request.body as ChatRequestBody
 
-  if (!message) {
-    ctx.status = 400
-    ctx.body = { error: { code: 'INVALID_REQUEST', message: '缺少 message 字段', status: 400 } }
-    return
-  }
+  if (!message) ctx.throw(400, '缺少 message 字段')
 
   // 获取上下文 + 拼接当前消息
   const history = contextService.getMessages(sessionId)
@@ -35,11 +31,7 @@ export async function chat(ctx: Koa.Context) {
 export async function stream(ctx: Koa.Context) {
   const { sessionId, message, model, temperature } = ctx.request.body as ChatRequestBody
 
-  if (!message) {
-    ctx.status = 400
-    ctx.body = { error: { code: 'INVALID_REQUEST', message: '缺少 message 字段', status: 400 } }
-    return
-  }
+  if (!message) ctx.throw(400, '缺少 message 字段')
 
   // 获取上下文 + 拼接当前消息
   const history = contextService.getMessages(sessionId)
@@ -101,11 +93,7 @@ export async function listHistory(ctx: Koa.Context) {
 export async function getHistory(ctx: Koa.Context) {
   const id = ctx.params.id
 
-  if (!jsonlStorage.exists(id)) {
-    ctx.status = 404
-    ctx.body = { error: { code: 'NOT_FOUND', message: '会话不存在', status: 404 } }
-    return
-  }
+  if (!jsonlStorage.exists(id)) ctx.throw(404, '会话不存在')
 
   ctx.body = jsonlStorage.readAll(id)
 }

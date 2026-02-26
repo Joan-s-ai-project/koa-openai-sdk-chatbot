@@ -8,10 +8,14 @@ export async function errorHandler(ctx: Koa.Context, next: Koa.Next) {
   try {
     await next()
   } catch (err: any) {
-    const status = err.status || 500
-    const code = status === 400 ? 'INVALID_REQUEST'
-      : status === 502 ? 'OPENAI_ERROR'
-      : 'INTERNAL_ERROR'
+    const status = err.status || err.statusCode || 500
+
+    // 根据错误来源分类 code
+    let code = 'INTERNAL_ERROR'
+    if (status === 400) code = 'INVALID_REQUEST'
+    else if (status === 404) code = 'NOT_FOUND'
+    else if (status === 429) code = 'RATE_LIMIT'
+    else if (err.message?.includes('OpenAI') || err.message?.includes('API')) code = 'OPENAI_ERROR'
 
     ctx.status = status
     ctx.body = {
@@ -22,7 +26,6 @@ export async function errorHandler(ctx: Koa.Context, next: Koa.Next) {
       }
     }
 
-    // 打印到控制台方便调试
-    console.error(`[${code}]`, err.message)
+    console.error(`[${code}] ${ctx.method} ${ctx.path} →`, err.message)
   }
 }
