@@ -2,6 +2,7 @@ import type Koa from 'koa'
 import { PassThrough } from 'stream'
 import { llmService } from '../services/llm.service'
 import { contextService } from '../services/context.service'
+import { jsonlStorage } from '../services/jsonl-storage'
 import type { ChatRequestBody } from '../types/chat'
 
 /**
@@ -68,4 +69,43 @@ export async function stream(ctx: Koa.Context) {
 
     passthrough.end()
   })()
+}
+
+/** GET /api/history — 历史会话列表 */
+export async function listHistory(ctx: Koa.Context) {
+  const files = jsonlStorage.listFiles()
+
+  const conversations = files.map(id => {
+    const messages = jsonlStorage.readAll(id)
+    // 取首条 user 消息作为标题
+    const firstUserMsg = messages.find(m => m.role === 'user')
+    const title = firstUserMsg?.content?.slice(0, 50) || '新会话'
+    // 取首条消息的时间戳
+    const createdAt = messages[0]?.ts || ''
+
+    return {
+      id,
+      title,
+      createdAt,
+      messageCount: messages.length
+    }
+  })
+
+  // 按创建时间倒序
+  conversations.sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+
+  ctx.body = conversations
+}
+
+/** GET /api/history/:id — 单个会话详情 */
+export async function getHistory(ctx: Koa.Context) {
+  const id = ctx.params.id
+
+  if (!jsonlStorage.exists(id)) {
+    ctx.status = 404
+    ctx.body = { error: { code: 'NOT_FOUND', message: '会话不存在', status: 404 } }
+    return
+  }
+
+  ctx.body = jsonlStorage.readAll(id)
 }
