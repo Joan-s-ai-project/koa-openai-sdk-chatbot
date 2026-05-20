@@ -1,7 +1,19 @@
 import type { ChatMessage } from '../types/chat'
 import { jsonlStorage } from './jsonl-storage'
 
-const SYSTEM_PROMPT = process.env.SYSTEM_PROMPT || '你是一个友好、专业的 AI 助手，用中文回答问题。'
+const SYSTEM_PROMPT_BASE = process.env.SYSTEM_PROMPT || '你是一个友好、专业的 AI 助手，用中文回答问题。'
+
+/** 动态生成 system prompt，注入当前日期 */
+function buildSystemPrompt(): string {
+  const now = new Date()
+  const dateStr = now.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  })
+  return `${SYSTEM_PROMPT_BASE}\n\n当前日期：${dateStr}`
+}
 
 /**
  * 上下文管理服务
@@ -21,7 +33,7 @@ class ContextService {
         this.sessions.set(sessionId, jsonlStorage.readAll(sessionId) as ChatMessage[])
       } else {
         // 全新会话
-        const initial: ChatMessage = { role: 'system', content: SYSTEM_PROMPT, createdAt: Date.now() }
+        const initial: ChatMessage = { role: 'system', content: buildSystemPrompt(), createdAt: Date.now() }
         this.sessions.set(sessionId, [initial])
         jsonlStorage.append(sessionId, initial)
       }

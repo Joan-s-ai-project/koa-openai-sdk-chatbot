@@ -306,6 +306,56 @@ export class GeminiProvider extends LLMProvider {
   }
 }
 
+// ─── MiMo Provider ─────────────────────────────────────────────────────
+
+export class MiMoProvider extends LLMProvider {
+  // 定价（美元/百万 token），来源：token-plan-sgp.xiaomimimo.com
+  private static PRICING: Record<string, PricingInfo> = {
+    'mimo-v2.5': { input: 0.0, output: 0.0, cacheInput: 0.0, cacheOutput: 0.0, currency: 'USD' },
+    'mimo-v2.5-pro': { input: 0.0, output: 0.0, cacheInput: 0.0, cacheOutput: 0.0, currency: 'USD' },
+  }
+
+  getPricing(model: string): PricingInfo {
+    return MiMoProvider.PRICING[model] || MiMoProvider.PRICING['mimo-v2.5-pro']
+  }
+
+  buildRequestBody(options: ChatRequestOptions): Record<string, any> {
+    return {
+      model: options.model,
+      messages: options.messages,
+      temperature: options.temperature,
+      tools: options.tools,
+      tool_choice: options.toolChoice || 'auto',
+      stream: options.stream ?? true,
+      stream_options: options.streamOptions || { include_usage: true },
+    }
+  }
+
+  parseChunk(parsed: any): ParsedChunk {
+    const choice = parsed.choices?.[0]
+    const delta = choice?.delta
+
+    let reasoning = ''
+    let content = ''
+    let toolCalls: any[] | undefined
+
+    if (delta) {
+      // MiMo 使用 reasoning_content 存放思考内容（与 DeepSeek 一致）
+      reasoning = delta.reasoning_content || ''
+      content = delta.content || ''
+      toolCalls = delta.tool_calls
+    }
+
+    const rawFinishReason = choice?.finish_reason as string | null
+    return {
+      delta: { reasoning, content, toolCalls },
+      finishReason: rawFinishReason ? rawFinishReason.toLowerCase() : null,
+      usage: parsed.usage || null,
+      model: parsed.model || null,
+    }
+  }
+}
+
 // ─── DeepSeek Provider ──────────────────────────────────────────────────
 
 export class DeepSeekProvider extends LLMProvider {
@@ -391,6 +441,13 @@ export function getAvailableModels(): ModelOption[] {
     )
   }
 
+  if (process.env.MIMO_API_KEY) {
+    models.push(
+      { id: 'mimo-v2.5', label: 'MiMo v2.5', provider: 'mimo' },
+      { id: 'mimo-v2.5-pro', label: 'MiMo v2.5 Pro', provider: 'mimo' },
+    )
+  }
+
   // 如果没有任何 provider 专属 key，回退到通用 OPENAI_API_KEY
   if (models.length === 0 && process.env.OPENAI_API_KEY) {
     const defaultModel = process.env.DEFAULT_MODEL || ''
@@ -409,6 +466,14 @@ export function getAvailableModels(): ModelOption[] {
  */
 export function createProvider(config?: Partial<ProviderConfig>): LLMProvider {
   const model = config?.model || process.env.DEFAULT_MODEL || ''
+
+  // ── MiMo ──
+  if (model.startsWith('mimo')) {
+    const apiKey = config?.apiKey || process.env.MIMO_API_KEY || process.env.OPENAI_API_KEY || ''
+    const baseUrl = config?.baseUrl || process.env.MIMO_BASE_URL || 'https://token-plan-sgp.xiaomimimo.com/v1'
+    console.log(`[createProvider] MiMo, model=${model}, key=...${apiKey.slice(-6)}`)
+    return new MiMoProvider({ apiKey, baseUrl, model })
+  }
 
   // ── Gemini ──
   if (model.startsWith('gemini')) {

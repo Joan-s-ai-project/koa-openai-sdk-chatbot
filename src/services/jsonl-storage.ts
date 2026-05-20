@@ -49,3 +49,7 @@ class JsonlStorage {
 
 // 单例导出
 export const jsonlStorage = new JsonlStorage(DATA_DIR)
+
+// LLM 调用 trace 专用存储（trace/ 目录，与对话数据分离）
+const TRACE_DIR = process.env.TRACE_DIR || 'trace/'
+export const traceStorage = new JsonlStorage(TRACE_DIR)

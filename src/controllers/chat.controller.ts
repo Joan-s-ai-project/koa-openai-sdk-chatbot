@@ -2,7 +2,7 @@ import type Koa from 'koa'
 import { PassThrough } from 'stream'
 import { llmService } from '../services/llm.service'
 import { contextService } from '../services/context.service'
-import { jsonlStorage } from '../services/jsonl-storage'
+import { jsonlStorage, traceStorage } from '../services/jsonl-storage'
 import { tavilySearch } from '../services/tavily.service'
 import { createProvider, getAvailableModels } from '../services/llm-provider'
 import type { ChatRequestBody } from '../types/chat'
@@ -185,12 +185,17 @@ export async function chatCompletion(ctx: Koa.Context) {
             break
           }
 
+          // 记录本轮请求（立即写入）
+          const traceId = `${sessionId}-r${round}-${Date.now()}`
+          traceStorage.append(sessionId, requestBody)
+
           // 读取本轮流
           const reader = response.body.getReader()
           const decoder = new TextDecoder()
           let buffer = ''
           let finishReason: string | null = null
           let assistantContent = ''
+          let roundReasoning = ''  // 本轮 reasoning，tool call 时需原样回传给 MiMo
           // 用 Map<id, ...> 替代数组，解决 Gemini 并行 tool call 不返回 index 的问题
           const toolCallMap = new Map<string, { id: string; name: string; argumentsRaw: string; extraContent?: any }>()
 
@@ -217,6 +222,9 @@ export async function chatCompletion(ctx: Koa.Context) {
                 // 使用 Provider 统一解析 chunk
                 const result = provider.parseChunk(parsed)
 
+                // 每个 SSE chunk 单独写一条 trace
+                traceStorage.append(sessionId, parsed)
+
                 if (result.usage) lastUsage = result.usage
                 if (result.model) lastModel = result.model
 
@@ -224,6 +232,7 @@ export async function chatCompletion(ctx: Koa.Context) {
 
                 // reasoning
                 if (result.delta.reasoning) {
+                  roundReasoning += result.delta.reasoning
                   fullReasoning += result.delta.reasoning
                   passthrough.write(`data: ${JSON.stringify({ type: 'reasoning', content: result.delta.reasoning })}\n\n`)
                 }
@@ -280,6 +289,8 @@ export async function chatCompletion(ctx: Koa.Context) {
             msgs.push({
               role: 'assistant',
               content: assistantContent || null,
+              // MiMo 要求：有 reasoning_content 时必须原样回传，否则报 400
+              ...(roundReasoning ? { reasoning_content: roundReasoning } : {}),
               tool_calls: toolCallAccumulator.map(tc => ({
                 id: tc.id,
                 type: 'function',
@@ -334,6 +345,7 @@ export async function chatCompletion(ctx: Koa.Context) {
         }
 
         // 写入 assistant 消息
+        const costData = lastUsage ? provider.calcCost(lastUsage, lastModel) : null
         const aiEntry: any = {
           role: 'assistant',
           content: fullContent,
@@ -349,9 +361,12 @@ export async function chatCompletion(ctx: Koa.Context) {
         ctxMessages.push({ role: 'user', content: message, createdAt: Date.now() })
         ctxMessages.push({ role: 'assistant', content: fullContent, createdAt: Date.now() })
 
+        // 构建 done 事件，与推给前端的格式完全一致，同时写入 JSONL
+        const doneEvent: Record<string, any> = { type: 'done', model: lastModel, ...(costData ?? {}) }
+        jsonlStorage.append(sessionId, doneEvent)
+
         // 发送 done 事件
-        const costData = lastUsage ? provider.calcCost(lastUsage, lastModel) : {}
-        passthrough.write(`data: ${JSON.stringify({ type: 'done', model: lastModel, ...costData })}\n\n`)
+        passthrough.write(`data: ${JSON.stringify(doneEvent)}\n\n`)
         passthrough.write(`event: close\n\n`)
       } catch (err: any) {
         console.error(`[chatCompletion] Unexpected error:`, err.message, err.cause || '', err.stack)
