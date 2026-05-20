@@ -4,7 +4,20 @@
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
   content: string
-  ts?: string
+  createdAt?: number
+  reasoning?: string
+  model?: string
+  toolActivities?: ToolActivity[]
+}
+
+/**
+ * Tool 调用活动
+ */
+export interface ToolActivity {
+  toolCallId: string
+  toolName: string
+  input: Record<string, any>
+  result?: string
 }
 
 /**
@@ -22,6 +35,7 @@ export interface TokenUsage {
 export type StreamChunk =
   | { type: 'reasoning'; content: string }
   | { type: 'content'; content: string }
+  | { type: 'searching'; query: string }   // Tavily 搜索触发时通知前端
   | { type: 'done'; usage: TokenUsage }
   | { type: 'error'; message: string }
 
@@ -31,6 +45,8 @@ export type StreamChunk =
 export interface ChatRequestBody {
   sessionId: string
   message: string
+  images?: string[]  // base64 data URL 格式的图片
   model?: string
-  temperature?: number
+  temperature?: number,
+  reasoning_split?: boolean
 }

@@ -21,7 +21,7 @@ class ContextService {
         this.sessions.set(sessionId, jsonlStorage.readAll(sessionId) as ChatMessage[])
       } else {
         // 全新会话
-        const initial: ChatMessage = { role: 'system', content: SYSTEM_PROMPT, ts: new Date().toISOString() }
+        const initial: ChatMessage = { role: 'system', content: SYSTEM_PROMPT, createdAt: Date.now() }
         this.sessions.set(sessionId, [initial])
         jsonlStorage.append(sessionId, initial)
       }
@@ -32,11 +32,12 @@ class ContextService {
   /**
    * 追加一轮对话（内存 + 磁盘）
    */
-  addExchange(sessionId: string, userMsg: string, assistantMsg: string): void {
+  addExchange(sessionId: string, userMsg: string, assistantMsg: string, reasoning?: string): void {
     const messages = this.getMessages(sessionId)
-    const ts = new Date().toISOString()
-    const userEntry: ChatMessage = { role: 'user', content: userMsg, ts }
-    const aiEntry: ChatMessage = { role: 'assistant', content: assistantMsg, ts }
+    const now = Date.now()
+    const userEntry: ChatMessage = { role: 'user', content: userMsg, createdAt: now }
+    const aiEntry: any = { role: 'assistant', content: assistantMsg, createdAt: now }
+    if (reasoning) aiEntry.reasoning = reasoning
 
     messages.push(userEntry, aiEntry)
     jsonlStorage.append(sessionId, userEntry)
