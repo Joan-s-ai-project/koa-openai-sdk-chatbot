@@ -32,3 +32,6 @@ dist-ssr
 
 # Chat history data
 data/
+trace/
+
+*.py

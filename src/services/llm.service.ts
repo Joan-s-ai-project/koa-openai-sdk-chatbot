@@ -2,32 +2,7 @@ import OpenAI from 'openai'
 import type { ChatCompletionMessageParam, ChatCompletionTool, ChatCompletionChunk } from 'openai/resources'
 import type { Stream } from 'openai/streaming'
 import type { ChatMessage, StreamChunk } from '../types/chat'
-import { tavilySearch } from './tavily.service'
-
-// ───────────────────────────────────────────────
-// 工具声明：告知 LLM 我们提供了一个网络搜索工具
-// LLM 会根据用户问题自主决定是否调用它
-// ───────────────────────────────────────────────
-const TOOLS: ChatCompletionTool[] = [
-  {
-    type: 'function',
-    function: {
-      name: 'search_web',
-      description:
-        '当问题涉及实时信息、近期新闻、最新数据或你的训练数据截止日期之后的内容时，使用此工具搜索互联网获取最新资讯。',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: '要搜索的关键词或问题，尽量简洁精准',
-          },
-        },
-        required: ['query'],
-      },
-    },
-  },
-]
+import * as tavilyTool from '../tools/tavily.tool'
 
 // 最大 Tool Call 轮数（防止模型无限循环调用工具）
 const MAX_TOOL_ROUNDS = 3
@@ -101,7 +76,7 @@ class LLMService {
           messages: msgs,
           temperature: options?.temperature ?? parseFloat(process.env.DEFAULT_TEMPERATURE || '0.7'),
           stream: true,
-          tools: TOOLS,
+          tools: [tavilyTool.definition] as any,
           tool_choice: 'auto', // 让模型自己决定是否要调用工具
           // reasoning_split: options?.reasoning_split
         } as any) as unknown as Stream<ChatCompletionChunk>
@@ -175,8 +150,6 @@ class LLMService {
 
         // ── 判断本轮结束原因 ─────────────────────────────────────────
         if (finishReason === 'tool_calls' && toolCallAccumulator.length > 0) {
-          // 模型要求调用工具，进入 Tavily 搜索流程
-
           // 1. 先把 assistant 的 tool_calls 消息追加到上下文
           msgs.push({
             role: 'assistant',
@@ -188,37 +161,41 @@ class LLMService {
             })),
           })
 
-          // 2. 逐个执行工具调用
+          // 2. 逐个执行工具调用（通过 registry 分发）
           for (const tc of toolCallAccumulator) {
-            let query = ''
+            let args: Record<string, any> = {}
             try {
-              const args = JSON.parse(tc.argumentsRaw)
-              query = args.query || ''
+              args = JSON.parse(tc.argumentsRaw)
             } catch {
-              query = tc.argumentsRaw
+              args = {}
             }
 
-            // 通知前端：正在搜索
-            yield { type: 'searching', query }
+            // 通知前端：tool 开始执行（search_web 用 searching 事件）
+            if (tc.name === 'search_web') {
+              yield { type: 'searching', query: args.query || '' }
+            }
 
-            // 执行 Tavily 搜索
-            let searchResult = ''
+            // 通过 tool 文件直接执行
+            let toolText = ''
             try {
-              const output = await tavilySearch(query)
-              searchResult = output.text
+              if (tc.name === 'search_web') {
+                const result = await tavilyTool.execute(args as any)
+                toolText = result.text
+              } else {
+                toolText = `未知工具：${tc.name}`
+              }
             } catch (err: any) {
-              searchResult = `搜索失败：${err.message}`
+              toolText = `工具执行失败：${err.message}`
             }
 
-            // 3. 将搜索结果以 tool 角色追加到上下文
+            // 3. 将 tool 结果以 tool 角色追加到上下文
             msgs.push({
               role: 'tool',
               tool_call_id: tc.id,
-              content: searchResult,
+              content: toolText,
             })
           }
 
-          // 进入下一轮，让模型根据搜索结果生成最终回答
           continue
         }
 

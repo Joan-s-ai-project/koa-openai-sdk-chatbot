@@ -1,5 +1,5 @@
 import type { ChatMessage } from '../types/chat'
-import { jsonlStorage } from './jsonl-storage'
+import { jsonlStorage } from '../utils/jsonl-storage'
 
 const SYSTEM_PROMPT_BASE = process.env.SYSTEM_PROMPT || '你是一个友好、专业的 AI 助手，用中文回答问题。'
 

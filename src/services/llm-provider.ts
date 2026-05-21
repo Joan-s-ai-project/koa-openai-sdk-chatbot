@@ -214,6 +214,7 @@ export class GeminiProvider extends LLMProvider {
   // 定价（美元/百万 token），来源：ai.google.dev/pricing
   // Gemini 2.5 Flash: input $0.15, output $0.60 (<=200k context)
   // Gemini 2.5 Pro: input $1.25, output $10.00 (<=200k context)
+  // Gemini 3.5 Flash: input $0.15, output $0.60 (<=200k context)
   private static PRICING: Record<string, PricingInfo> = {
     'gemini-2.5-flash': { input: 0.15, output: 0.60, cacheInput: 0.0375, cacheOutput: 0.60, currency: 'USD' },
     'gemini-2.5-flash-preview': { input: 0.15, output: 0.60, cacheInput: 0.0375, cacheOutput: 0.60, currency: 'USD' },
@@ -221,6 +222,7 @@ export class GeminiProvider extends LLMProvider {
     'gemini-2.5-pro-preview': { input: 1.25, output: 10.0, cacheInput: 0.3125, cacheOutput: 10.0, currency: 'USD' },
     'gemini-2.0-flash': { input: 0.10, output: 0.40, cacheInput: 0.025, cacheOutput: 0.40, currency: 'USD' },
     'gemini-3-flash-preview': { input: 0.15, output: 0.60, cacheInput: 0.0375, cacheOutput: 0.60, currency: 'USD' },
+    'gemini-3.5-flash': { input: 0.15, output: 0.60, cacheInput: 0.0375, cacheOutput: 0.60, currency: 'USD' },
   }
 
   getPricing(model: string): PricingInfo {
@@ -431,6 +433,7 @@ export function getAvailableModels(): ModelOption[] {
   if (process.env.GEMINI_AI_KEY) {
     models.push(
       { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', provider: 'gemini' },
+      { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', provider: 'gemini' },
     )
   }
 
