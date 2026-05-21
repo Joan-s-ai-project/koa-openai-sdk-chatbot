@@ -109,10 +109,8 @@ export async function chatCompletion(ctx: Koa.Context) {
 
     ; (async () => {
       let fullContent = ''
-      let fullReasoning = ''
       let lastUsage: any = null
       let lastModel = model || process.env.DEFAULT_MODEL || ''
-      const toolActivities: ToolActivity[] = []
 
       const MAX_TOOL_ROUNDS = 100
 
@@ -198,7 +196,6 @@ export async function chatCompletion(ctx: Koa.Context) {
                 // reasoning
                 if (result.delta.reasoning) {
                   roundReasoning += result.delta.reasoning
-                  fullReasoning += result.delta.reasoning
                   passthrough.write(`data: ${JSON.stringify({ type: 'reasoning', content: result.delta.reasoning })}\n\n`)
                 }
 
@@ -251,6 +248,21 @@ export async function chatCompletion(ctx: Koa.Context) {
               toolCallAccumulator.map(tc => `${tc.name}(${tc.argumentsRaw})`),
             )
 
+            // 写入本轮 assistant 消息（带 thinking 和 tool_calls）到 JSONL
+            const assistantEntry: any = {
+              role: 'assistant',
+              content: assistantContent || null,
+              createdAt: Date.now(),
+              model: lastModel,
+            }
+            if (roundReasoning) assistantEntry.reasoning = roundReasoning
+            assistantEntry.tool_calls = toolCallAccumulator.map(tc => ({
+              id: tc.id,
+              type: 'function',
+              function: { name: tc.name, arguments: tc.argumentsRaw },
+            }))
+            jsonlStorage.append(sessionId, assistantEntry)
+
             // 将 assistant 的 tool_calls 消息追加到上下文
             msgs.push({
               role: 'assistant',
@@ -298,33 +310,41 @@ export async function chatCompletion(ctx: Koa.Context) {
                 toolDisplay = toolText
               }
 
+              // 写入 tool 结果到 JSONL
+              jsonlStorage.append(sessionId, {
+                role: 'tool',
+                tool_call_id: tc.id,
+                name: tc.name,
+                content: toolDisplay,
+                createdAt: Date.now(),
+              })
+
               // 将 tool 结果追加到上下文
               msgs.push({ role: 'tool', tool_call_id: tc.id, content: toolText })
 
-              // 记录活动 + 通知前端
-              toolActivities.push({ toolCallId: tc.id, toolName: tc.name, input: args, result: toolDisplay })
+              // 通知前端
               passthrough.write(`data: ${JSON.stringify({ type: 'tool_result', name: tc.name, ...args, result: toolDisplay })}\n\n`)
             }
 
             continue // 进入下一轮，让模型根据 tool 结果生成回答
           }
 
-          // 正常结束
+          // 正常结束：写入最后一轮 assistant 消息到 JSONL
+          const finalAssistantEntry: any = {
+            role: 'assistant',
+            content: assistantContent,
+            createdAt: Date.now(),
+            model: lastModel,
+          }
+          if (roundReasoning) finalAssistantEntry.reasoning = roundReasoning
+          jsonlStorage.append(sessionId, finalAssistantEntry)
+
           console.log(`[chatCompletion] Finished, reason: ${finishReason}, content: ${fullContent.length} chars`)
           break
         }
 
-        // ── 写入 assistant 消息到 JSONL ──────────────────────────────────
+        // ── 写入 done 事件到 JSONL ──────────────────────────────────
         const costData = lastUsage ? provider.calcCost(lastUsage, lastModel) : null
-        const aiEntry: any = {
-          role: 'assistant',
-          content: fullContent,
-          createdAt: Date.now(),
-          model: lastModel,
-        }
-        if (fullReasoning) aiEntry.reasoning = fullReasoning
-        if (toolActivities.length > 0) aiEntry.toolActivities = toolActivities
-        jsonlStorage.append(sessionId, aiEntry)
 
         // 更新内存上下文
         const ctxMessages = contextService.getMessages(sessionId)
