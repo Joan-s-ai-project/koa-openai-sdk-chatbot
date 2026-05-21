@@ -1,5 +1,5 @@
 import Router from 'koa-router'
-import { chat, stream, chatCompletion, getModels, listHistory, getHistory } from '../controllers/chat.controller'
+import { chat, stream, chatCompletion, getModels, listHistory, getHistory, deleteHistory } from '../controllers/chat.controller'
 
 const router = new Router()
 
@@ -24,5 +24,8 @@ router.get('/api/history', listHistory)
 
 /** 单个会话详情 */
 router.get('/api/history/:id', getHistory)
+
+/** 删除会话 */
+router.delete('/api/history/:id', deleteHistory)
 
 export default router

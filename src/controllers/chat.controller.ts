@@ -373,6 +373,21 @@ export async function getHistory(ctx: Koa.Context) {
   ctx.body = jsonlStorage.readAll(id)
 }
 
+/** DELETE /api/history/:id — 删除会话 */
+export async function deleteHistory(ctx: Koa.Context) {
+  const id = ctx.params.id
+  if (!jsonlStorage.exists(id)) ctx.throw(404, '会话不存在')
+
+  const deleted = jsonlStorage.delete(id)
+
+  // 同时删除对应的 trace 文件（如果存在）
+  if (traceStorage.exists(id)) {
+    traceStorage.delete(id)
+  }
+
+  ctx.body = { success: deleted, message: deleted ? '删除成功' : '删除失败' }
+}
+
 // ─── 工具函数 ──────────────────────────────────────────────────────────────
 
 /**

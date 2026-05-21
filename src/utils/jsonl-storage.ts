@@ -45,6 +45,14 @@ class JsonlStorage {
       .filter(f => f.endsWith('.jsonl'))
       .map(f => f.replace('.jsonl', ''))
   }
+
+  /** 删除文件 */
+  delete(filename: string): boolean {
+    const filePath = path.join(this.dataDir, `${filename}.jsonl`)
+    if (!fs.existsSync(filePath)) return false
+    fs.unlinkSync(filePath)
+    return true
+  }
 }
 
 // 单例导出
