@@ -131,7 +131,9 @@ export async function* runAgent(input: AgentRunInput): AsyncGenerator<AgentEvent
   // 构建首轮上下文 + 持久化 user 消息
   const userMessage = buildUserMessage(provider, message, images)
   const msgs: any[] = [...contextService.getMessages(sessionId), userMessage]
-  jsonlStorage.append(sessionId, { role: 'user', content: message, createdAt: Date.now() })
+  const userEntry: any = { role: 'user', content: message, createdAt: Date.now() }
+  if (images && images.length > 0) userEntry.images = images
+  jsonlStorage.append(sessionId, userEntry)
 
   let fullContent = ''
   let lastUsage: any = null
@@ -310,7 +312,7 @@ async function* runToolRound(
     yield buildToolStartEvent(tc.name, args) as AgentEvent
     console.log(`[agent] executing tool "${tc.name}" with args:`, args)
 
-    const result = await dispatchTool(tc.name, args)
+    const result = await dispatchTool(tc.name, args, { sessionId })
     console.log(`[agent] tool "${tc.name}" result length: ${result.text.length}`)
 
     jsonlStorage.append(sessionId, {

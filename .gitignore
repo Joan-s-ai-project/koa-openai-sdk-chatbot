@@ -34,4 +34,7 @@ dist-ssr
 data/
 trace/
 
+# Bash tool sandbox directories
+sandbox/
+
 *.py

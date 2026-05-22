@@ -76,12 +76,10 @@ interface ProviderSpec {
   pricing: Record<string, PricingInfo>
   /** 找不到 model 时回退的定价 key */
   defaultPricingKey: string
-  /** 额外请求体字段（reasoning/thinking 配置等） */
-  extraBody?: Record<string, any>
   /** 自定义 reasoning 提取，返回 [reasoning, content]；默认走 delta.reasoning_content */
   parseDelta?: (delta: any) => [string, string]
   /** 前端模型列表 */
-  models: { id: string; label: string }[]
+  models: { id: string; label: string; extraBody?: Record<string, any> }[]
 }
 
 const PROVIDERS: ProviderSpec[] = [
@@ -97,7 +95,6 @@ const PROVIDERS: ProviderSpec[] = [
       'MiniMax-M2.5-highspeed': { input: 4.2, output: 16.8, cacheInput: 0.21, cacheOutput: 2.625, currency: 'CNY' },
     },
     defaultPricingKey: 'MiniMax-M2.7',
-    extraBody: { reasoning_split: true },
     // MiniMax 思考内容在 delta.reasoning_details[].text，兜底 reasoning_content
     parseDelta: (delta: any) => {
       const details = delta?.reasoning_details
@@ -107,8 +104,8 @@ const PROVIDERS: ProviderSpec[] = [
       return [reasoning, delta?.content || '']
     },
     models: [
-      { id: 'MiniMax-M2.5', label: 'MiniMax M2.5' },
-      { id: 'MiniMax-M2.7', label: 'MiniMax M2.7' },
+      { id: 'MiniMax-M2.5', label: 'MiniMax M2.5', extraBody: { reasoning_split: true } },
+      { id: 'MiniMax-M2.7', label: 'MiniMax M2.7', extraBody: { reasoning_split: true } },
     ],
   },
   {
@@ -125,9 +122,9 @@ const PROVIDERS: ProviderSpec[] = [
       'gemini-2.0-flash': { input: 0.1, output: 0.4, cacheInput: 0.025, cacheOutput: 0.4, currency: 'USD' },
       'gemini-3-flash-preview': { input: 0.15, output: 0.6, cacheInput: 0.0375, cacheOutput: 0.6, currency: 'USD' },
       'gemini-3.5-flash': { input: 0.15, output: 0.6, cacheInput: 0.0375, cacheOutput: 0.6, currency: 'USD' },
+      'gemini-3.1-flash-lite-preview': { input: 0.25, output: 1.5, cacheInput: 0.0625, cacheOutput: 1.5, currency: 'USD' },
     },
     defaultPricingKey: 'gemini-2.5-flash',
-    extraBody: { extra_body: { google: { thinking_config: { include_thoughts: true } } } },
     // Gemini 把思考内容塞在 delta.content 的 <thought>...</thought> 里
     parseDelta: (delta: any) => {
       const raw: string = delta?.content || ''
@@ -141,8 +138,9 @@ const PROVIDERS: ProviderSpec[] = [
       return ['', raw]
     },
     models: [
-      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash' },
-      { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
+      { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash', extraBody: { extra_body: { google: { thinking_config: { include_thoughts: true } } } } },
+      { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash', extraBody: { extra_body: { google: { thinking_config: { include_thoughts: true } } } } },
+      { id: 'gemini-3.1-flash-lite-preview', label: 'Gemini 3.1 Flash Lite' },
     ],
   },
   {
@@ -235,6 +233,8 @@ export function createProvider(config?: { apiKey?: string; baseUrl?: string; mod
     },
 
     buildRequestBody(options) {
+      const modelCfg = spec.models.find(m => m.id === options.model)
+      const extra = modelCfg?.extraBody || {}
       return {
         model: options.model,
         messages: options.messages,
@@ -243,7 +243,7 @@ export function createProvider(config?: { apiKey?: string; baseUrl?: string; mod
         tool_choice: options.toolChoice || 'auto',
         stream: options.stream ?? true,
         stream_options: options.streamOptions || { include_usage: true },
-        ...(spec.extraBody || {}),
+        ...extra,
       }
     },
 
@@ -287,6 +287,7 @@ export function createProvider(config?: { apiKey?: string; baseUrl?: string; mod
         },
       }
     },
+
 
     buildMultimodalContent(message, images) {
       const parts: any[] = []

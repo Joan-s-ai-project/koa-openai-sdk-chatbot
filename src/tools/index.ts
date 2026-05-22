@@ -7,12 +7,17 @@ export interface ToolResult {
   display: string
 }
 
+/** 工具调用上下文（由 agent/service 层传入） */
+export interface ToolContext {
+  sessionId?: string
+}
+
 /** 工具注册项 */
 export interface ToolEntry {
   /** OpenAI 兼容的 tool 声明（直接传给上游 LLM） */
   definition: any
   /** 实际执行函数 */
-  execute: (args: any) => Promise<ToolResult>
+  execute: (args: any, ctx?: ToolContext) => Promise<ToolResult>
   /** 当 tool 被触发时，发送给前端的"开始执行"事件 */
   buildStartEvent: (args: Record<string, any>) => Record<string, any>
 }
@@ -31,7 +36,7 @@ export const TOOL_REGISTRY: Record<string, ToolEntry> = {
   },
   run_bash: {
     definition: bashTool.definition,
-    execute: bashTool.execute,
+    execute: (args, ctx) => bashTool.execute({ ...args, sessionId: ctx?.sessionId }),
     buildStartEvent: (args) => ({ type: 'bash_running', command: args.command || '' }),
   },
 }
@@ -40,13 +45,17 @@ export const TOOL_REGISTRY: Record<string, ToolEntry> = {
 export const TOOL_DEFINITIONS = Object.values(TOOL_REGISTRY).map(t => t.definition)
 
 /** 按名称分发 tool 执行；未知 tool 返回降级结果 */
-export async function dispatchTool(name: string, args: Record<string, any>): Promise<ToolResult> {
+export async function dispatchTool(
+  name: string,
+  args: Record<string, any>,
+  ctx?: ToolContext,
+): Promise<ToolResult> {
   const entry = TOOL_REGISTRY[name]
   if (!entry) {
     return { text: `未知工具：${name}`, display: `⚠️ 未知工具：${name}` }
   }
   try {
-    return await entry.execute(args)
+    return await entry.execute(args, ctx)
   } catch (err: any) {
     const msg = `工具执行失败：${err.message}`
     return { text: msg, display: msg }

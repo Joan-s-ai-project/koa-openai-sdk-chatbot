@@ -174,8 +174,8 @@ class LLMService {
             const startEvent = buildToolStartEvent(tc.name, args)
             yield startEvent as StreamChunk
 
-            // 通过 registry 执行
-            const { text: toolText } = await dispatchTool(tc.name, args)
+            // 通过 registry 执行（llm.service 无 sessionId，使用随机沙箱）
+            const { text: toolText } = await dispatchTool(tc.name, args, { sessionId: `llm-${Date.now()}` })
 
             // 3. 将 tool 结果以 tool 角色追加到上下文
             msgs.push({
