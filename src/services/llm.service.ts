@@ -2,7 +2,7 @@ import OpenAI from 'openai'
 import type { ChatCompletionMessageParam, ChatCompletionTool, ChatCompletionChunk } from 'openai/resources'
 import type { Stream } from 'openai/streaming'
 import type { ChatMessage, StreamChunk } from '../types/chat'
-import * as tavilyTool from '../tools/tavily.tool'
+import { TOOL_DEFINITIONS, dispatchTool, buildToolStartEvent } from '../tools'
 
 // 最大 Tool Call 轮数（防止模型无限循环调用工具）
 const MAX_TOOL_ROUNDS = 3
@@ -76,7 +76,7 @@ class LLMService {
           messages: msgs,
           temperature: options?.temperature ?? parseFloat(process.env.DEFAULT_TEMPERATURE || '0.7'),
           stream: true,
-          tools: [tavilyTool.definition] as any,
+          tools: TOOL_DEFINITIONS as any,
           tool_choice: 'auto', // 让模型自己决定是否要调用工具
           // reasoning_split: options?.reasoning_split
         } as any) as unknown as Stream<ChatCompletionChunk>
@@ -170,23 +170,12 @@ class LLMService {
               args = {}
             }
 
-            // 通知前端：tool 开始执行（search_web 用 searching 事件）
-            if (tc.name === 'search_web') {
-              yield { type: 'searching', query: args.query || '' }
-            }
+            // 通知前端：tool 开始执行（searching / bash_running / ...）
+            const startEvent = buildToolStartEvent(tc.name, args)
+            yield startEvent as StreamChunk
 
-            // 通过 tool 文件直接执行
-            let toolText = ''
-            try {
-              if (tc.name === 'search_web') {
-                const result = await tavilyTool.execute(args as any)
-                toolText = result.text
-              } else {
-                toolText = `未知工具：${tc.name}`
-              }
-            } catch (err: any) {
-              toolText = `工具执行失败：${err.message}`
-            }
+            // 通过 registry 执行
+            const { text: toolText } = await dispatchTool(tc.name, args)
 
             // 3. 将 tool 结果以 tool 角色追加到上下文
             msgs.push({
