@@ -8,10 +8,18 @@ const MAX_TOOL_ROUNDS = 100
 
 // ─── 类型 ──────────────────────────────────────────────────────────────
 
+export interface Attachment {
+  type: 'image' | 'document'
+  name: string
+  content?: string   // 文档提取的纯文本
+  dataUrl?: string   // 图片 base64 data URL
+}
+
 export interface AgentRunInput {
   sessionId: string
   message: string
   images?: string[]
+  attachments?: Attachment[]
   model?: string
   temperature?: number
 }
@@ -119,7 +127,7 @@ async function parseUpstreamError(response: Response): Promise<{ code: number | 
  * 不感知 HTTP / SSE 协议；控制器负责把事件序列化写出。
  */
 export async function* runAgent(input: AgentRunInput): AsyncGenerator<AgentEvent> {
-  const { sessionId, message, images, model, temperature } = input
+  const { sessionId, message, images, attachments, model, temperature } = input
 
   const provider = createProvider({ model })
 
@@ -129,10 +137,15 @@ export async function* runAgent(input: AgentRunInput): AsyncGenerator<AgentEvent
   }
 
   // 构建首轮上下文 + 持久化 user 消息
-  const userMessage = buildUserMessage(provider, message, images)
+  const userMessage = buildUserMessage(provider, message, images, attachments)
   const msgs: any[] = [...contextService.getMessages(sessionId), userMessage]
   const userEntry: any = { role: 'user', content: message, createdAt: Date.now() }
   if (images && images.length > 0) userEntry.images = images
+  if (attachments && attachments.length > 0) userEntry.attachments = attachments.map(a => ({
+    type: a.type,
+    name: a.name,
+    ...(a.type === 'image' && a.dataUrl ? { dataUrl: a.dataUrl } : {}),
+  }))
   jsonlStorage.append(sessionId, userEntry)
 
   let fullContent = ''
@@ -331,11 +344,26 @@ async function* runToolRound(
 
 // ─── 私有：辅助函数 ───────────────────────────────────────────────────
 
-function buildUserMessage(provider: Provider, message: string, images?: string[]): any {
-  if (images && images.length > 0) {
-    return { role: 'user', content: provider.buildMultimodalContent(message, images) }
+function buildUserMessage(provider: Provider, message: string, images?: string[], attachments?: Attachment[]): any {
+  // 合并所有图片来源：直传 images + 图片附件的 dataUrl
+  const allImages: string[] = [
+    ...(images || []),
+    ...(attachments?.filter(a => a.type === 'image' && a.dataUrl).map(a => a.dataUrl!) || []),
+  ]
+
+  // 文档附件：用 XML 标签包裹注入，让模型明确区分附件来源
+  const docParts = attachments
+    ?.filter(a => a.type === 'document' && a.content)
+    .map(a => `<file name="${a.name}">\n${a.content}\n</file>`) ?? []
+
+  const fullText = docParts.length > 0
+    ? `${docParts.join('\n\n')}\n\n---\n\n${message}`
+    : message
+
+  if (allImages.length > 0) {
+    return { role: 'user', content: provider.buildMultimodalContent(fullText, allImages) }
   }
-  return { role: 'user', content: message }
+  return { role: 'user', content: fullText }
 }
 
 function persistAssistantMessage(sessionId: string, model: string, content: string, reasoning: string): void {

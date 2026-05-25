@@ -76,15 +76,17 @@ export async function stream(ctx: Koa.Context) {
 /** POST /api/v1/chat/completion — 多 Provider 流式聊天（含 Agent Tool 循环） */
 export async function chatCompletion(ctx: Koa.Context) {
   const body = ctx.request.body as ChatRequestBody
-  const { sessionId, message, model, temperature, images } = body
+  const { sessionId, message, model, temperature, images, attachments } = body
 
-  if (!message && (!images || images.length === 0)) ctx.throw(400, '缺少 message 字段')
+  if (!message && (!images || images.length === 0) && (!attachments || attachments.length === 0)) {
+    ctx.throw(400, '缺少 message 字段')
+  }
 
   const sse = prepareSSE(ctx)
 
     ; (async () => {
       try {
-        for await (const event of runAgent({ sessionId, message, images, model, temperature })) {
+        for await (const event of runAgent({ sessionId, message, images, attachments, model, temperature })) {
           sse.send(event)
         }
         sse.raw('event: close')

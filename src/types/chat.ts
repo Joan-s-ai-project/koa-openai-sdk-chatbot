@@ -46,6 +46,12 @@ export interface ChatRequestBody {
   sessionId: string
   message: string
   images?: string[]  // base64 data URL 格式的图片
+  attachments?: Array<{
+    type: 'image' | 'document'
+    name: string
+    content?: string   // 文档提取的纯文本
+    dataUrl?: string   // 图片 base64 data URL
+  }>
   model?: string
   temperature?: number,
   reasoning_split?: boolean
