@@ -1,6 +1,7 @@
 import * as tavilyTool from './tavily.tool'
 import * as bashTool from './bash.tool'
 import * as memoryTool from './memory.tool'
+import * as browserTool from './browser.tool'
 
 /** 工具执行结果：text 给 LLM，display 给前端展示 */
 export interface ToolResult {
@@ -49,6 +50,11 @@ export const TOOL_REGISTRY: Record<string, ToolEntry> = {
     definition: memoryTool.saveDefinition,
     execute: (args) => memoryTool.saveMemory(args),
     buildStartEvent: (args) => ({ type: 'memory_saving', conversation_id: args.conversation_id || '' }),
+  },
+  browser: {
+    definition: browserTool.definition,
+    execute: (args, ctx) => browserTool.execute(args, ctx?.sessionId),
+    buildStartEvent: (args) => ({ type: 'browser_action', action: args.action || '', url: args.url || '', selector: args.selector || '' }),
   },
 }
 

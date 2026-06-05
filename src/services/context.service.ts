@@ -7,15 +7,16 @@ const MEMORY_INSTRUCTIONS = `
 
 ## 记忆工具使用规则
 
-你拥有持久化记忆能力，必须严格遵守以下规则：
+你拥有持久化记忆能力，可在合适的场景下使用：
 
-### memory_search（每轮必须首先调用）
-- **在回复用户任何问题之前**，必须先调用 memory_search 检索相关记忆
+### memory_search（按需调用）
+- 当用户的问题涉及个人信息、历史偏好、过往经历，或需要上下文连贯性时，调用 memory_search 检索相关记忆
+- 对于通用知识问答、简单闲聊、与用户个人无关的问题，无需调用
 - query 使用用户消息的核心意图，简洁精准
-- 将检索到的记忆作为背景信息融入回答，让回答更个性化、更连贯
 
-### memory_save（每轮回复后调用）
-- **在完成回复之后**，调用 memory_save 保存本轮对话
+### memory_save（按需调用）
+- 当用户分享了个人信息、偏好、重要经历或值得记住的事项时，调用 memory_save 保存
+- 对于无个性化价值的普通对话（如通用问答），无需保存
 - messages 包含本轮的 user 消息和你的 assistant 回复
 - conversation_id 使用当前会话标识`
 
@@ -29,6 +30,45 @@ function buildSystemPrompt(): string {
     weekday: 'long',
   })
   return `${SYSTEM_PROMPT_BASE}\n\n当前日期：${dateStr}${MEMORY_INSTRUCTIONS}`
+}
+
+/**
+ * 从 JSONL 原始记录中过滤出合法的 chat messages。
+ *
+ * 需要清理的情况：
+ *  1. `{"type":"done",...}` 等非消息记录（没有 role 字段）
+ *  2. 多余的业务字段（createdAt、model、images、attachments 等），避免发给上游 API
+ *  3. 保留 tool 相关字段（tool_calls / tool_call_id），以便带历史 tool 交互时不丢失上下文
+ */
+function sanitizeMessages(raw: Record<string, any>[]): ChatMessage[] {
+  const validRoles = new Set(['system', 'user', 'assistant', 'tool'])
+  const result: ChatMessage[] = []
+
+  for (const entry of raw) {
+    if (!entry.role || !validRoles.has(entry.role)) continue
+
+    const msg: any = { role: entry.role }
+
+    // content — 保留原值（可以是 string | null | array）
+    if (entry.content !== undefined) msg.content = entry.content
+
+    // assistant 可能带 tool_calls
+    if (entry.role === 'assistant' && entry.tool_calls) {
+      msg.tool_calls = entry.tool_calls
+    }
+
+    // tool 消息需要 tool_call_id
+    if (entry.role === 'tool' && entry.tool_call_id) {
+      msg.tool_call_id = entry.tool_call_id
+    }
+
+    // 保留 createdAt 用于内部排序（不会发给 API，buildRequestBody 取 messages 里的 role/content/tool_calls）
+    if (entry.createdAt) msg.createdAt = entry.createdAt
+
+    result.push(msg as ChatMessage)
+  }
+
+  return result
 }
 
 /**
@@ -46,7 +86,8 @@ class ContextService {
     if (!this.sessions.has(sessionId)) {
       if (jsonlStorage.exists(sessionId)) {
         // 从磁盘恢复（场景：服务重启后用旧 sessionId 请求）
-        this.sessions.set(sessionId, jsonlStorage.readAll(sessionId) as ChatMessage[])
+        const raw = jsonlStorage.readAll(sessionId)
+        this.sessions.set(sessionId, sanitizeMessages(raw))
       } else {
         // 全新会话
         const initial: ChatMessage = { role: 'system', content: buildSystemPrompt(), createdAt: Date.now() }

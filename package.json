@@ -14,14 +14,17 @@
   "dependencies": {
     "@koa/multer": "^4.0.0",
     "@tavily/core": "^0.7.2",
+    "@types/koa-static": "^4.0.4",
     "dotenv": "^17.3.1",
     "koa": "^3.1.2",
     "koa-bodyparser": "^4.4.1",
     "koa-router": "^14.0.0",
+    "koa-static": "^5.0.0",
     "node-html-parser": "^7.1.0",
     "officeparser": "^7.0.3",
     "openai": "^6.25.0",
     "pdf-parse-new": "^2.1.0",
+    "playwright": "^1.52.0",
     "word-extractor": "^1.0.4",
     "xlsx": "^0.18.5"
   },

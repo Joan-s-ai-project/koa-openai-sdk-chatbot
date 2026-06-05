@@ -235,9 +235,30 @@ export function createProvider(config?: { apiKey?: string; baseUrl?: string; mod
     buildRequestBody(options) {
       const modelCfg = spec.models.find(m => m.id === options.model)
       const extra = modelCfg?.extraBody || {}
+
+      // 清理 messages：只保留 API 标准字段，去除 createdAt / model / reasoning 等业务字段
+      const cleanMessages = options.messages.map((msg: any) => {
+        const clean: any = { role: msg.role }
+        if (msg.content !== undefined && msg.content !== null) {
+          clean.content = msg.content
+        } else if (msg.role !== 'assistant') {
+          // 非 assistant 角色 content 不能省略
+          clean.content = msg.content ?? ''
+        }
+        // assistant 带 tool_calls 时 content 可为空字符串（Gemini 兼容性）
+        if (msg.role === 'assistant' && msg.tool_calls) {
+          clean.content = msg.content || ''
+          clean.tool_calls = msg.tool_calls
+        }
+        if (msg.tool_call_id) clean.tool_call_id = msg.tool_call_id
+        if (msg.reasoning_content) clean.reasoning_content = msg.reasoning_content
+        if (msg.role === 'tool' && msg.name) clean.name = msg.name
+        return clean
+      })
+
       return {
         model: options.model,
-        messages: options.messages,
+        messages: cleanMessages,
         temperature: options.temperature,
         tools: options.tools,
         tool_choice: options.toolChoice || 'auto',
